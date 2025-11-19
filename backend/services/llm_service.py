@@ -1,7 +1,7 @@
 import os
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from ..utils import db_utils
@@ -131,7 +131,7 @@ Your job is to orchestrate a conversation to help a user book, cancel, reschedul
 **Core Interaction Flow:**
 1.  Understand the user's intent (book, check, cancel, etc.).
 2.  Gather all necessary information (service, specific date/time, user name, email, appointment ID).
-3.  Calculate absolute dates/times ('YYYY-MM-DD HH:MM:SS') from relative input.
+3.  Calculate absolute dates/times ('YYYY-MM-DD HH:MM:SS') from any relative input.
 4.  **MANDATORY Confirmation Step (Before any Write Action):**
     * Before calling `book_appointment`, `reschedule_appointment`, or `modify_appointment_service`, you MUST **first** call `check_availability` for the target slot.
     * If `check_availability` returns an *empty list* (slot is unavailable), you MUST follow the failure rules in Step 6.
@@ -165,13 +165,11 @@ async def get_llm_response_with_history(session_id: str, messages_history: list[
         normalized_message = last_user_message.lower().strip().replace('.', '').replace('!', '')
         if normalized_message in TERMINATION_PHRASES:
             print("LLM: Detected termination phrase.")
-            db_utils.add_conversation_message(session_id, "user", last_user_message)
-            db_utils.add_conversation_message(session_id, "ai", END_CHAT_SIGNAL)
             return END_CHAT_SIGNAL
     else:
         return "It seems we just started. How can I help?"
 
-    messages_for_llm: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}] + messages_history
+    messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}] + messages_history
 
     MAX_TOOL_CALLS = 5
     loop_count = 0
@@ -239,19 +237,18 @@ async def get_llm_response_with_history(session_id: str, messages_history: list[
                              tool_result_value = f"Error: Unknown tool '{function_name}'."
 
                         if isinstance(tool_result_value, (str, list, dict, tuple)) or tool_result_value is None:
-                             tool_result_content_for_llm = tool_result_value
+                             tool_result_content_for_llm = str(tool_result_value)
                         elif isinstance(tool_result_value, int) and function_name == "book_appointment":
                              tool_result_content_for_llm = f"Booking successful. New appointment ID: {tool_result_value}"
                         elif tool_result_value is True:
                              tool_result_content_for_llm = f"{function_name.replace('_', ' ').capitalize()} successful."
                         else:
-                             tool_result_content_for_llm = f"Tool executed with unexpected result type: {type(tool_result_value)}"
+                             tool_result_content_for_llm = f"Tool executed with result: {tool_result_value}"
 
-                        print(f"LLM: Function {function_name} returned (raw): {tool_result_value}")
-                        print(f"LLM: Content for LLM: {tool_result_content_for_llm}")
+                        print(f"LLM: Tool result: {tool_result_content_for_llm}")
 
                         if email_action and appointment_id_for_email:
-                            print(f"LLM: Attempting to send '{email_action}' email for ID {appointment_id_for_email}...")
+                            print(f"LLM: Attempting to send '{email_action}' email...")
                             try:
                                 user_email_for_message = function_args.get("user_email")
                                 if not user_email_for_message:
@@ -264,50 +261,41 @@ async def get_llm_response_with_history(session_id: str, messages_history: list[
                                     )
                                     if email_sent:
                                         db_utils.mark_confirmation_sent(appointment_id_for_email)
-                                        if isinstance(tool_result_content_for_llm, str):
-                                            tool_result_content_for_llm += f" Confirmation email sent successfully to {user_email_for_message}."
+                                        tool_result_content_for_llm += f" Confirmation email sent to {user_email_for_message}."
                                     else:
-                                        print(f"LLM: WARNING - Failed email send '{email_action}' ID {appointment_id_for_email}.")
-                                        if isinstance(tool_result_content_for_llm, str): tool_result_content_for_llm += " (Note: Email failed.)"
+                                        tool_result_content_for_llm += " (Note: Email sending failed.)"
                                 else:
-                                     print(f"LLM: WARNING - Cannot send email for '{email_action}' ID {appointment_id_for_email}, email unknown.")
-                                     if isinstance(tool_result_content_for_llm, str): tool_result_content_for_llm += " (Note: Could not determine email address.)"
+                                     print("LLM: Could not find email address for confirmation.")
 
                             except Exception as e_email:
-                                 print(f"LLM: CRITICAL - Email Error: {e_email}")
-                                 if isinstance(tool_result_content_for_llm, str): tool_result_content_for_llm += f" (Note: Email failed critically.)"
+                                 print(f"LLM: Email Error: {e_email}")
 
                     except Exception as e:
-                        print(f"Error executing/processing tool '{function_name}': {e}")
+                        print(f"Error executing tool '{function_name}': {e}")
                         tool_result_content_for_llm = f"An internal error occurred: {e}"
 
                 else:
-                    print(f"Error: Unrecognized tool call type: {tool_call.type}")
-                    tool_result_content_for_llm = "Error: Unrecognized tool call."
+                    tool_result_content_for_llm = "Error: Unrecognized tool call type."
 
                 tool_results_for_next_turn.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "name": function_name,
-                    "content": json.dumps(tool_result_content_for_llm)
+                    "content": str(tool_result_content_for_llm)
                 })
 
             messages_for_llm.extend(tool_results_for_next_turn)
             continue
 
         else:
-            print("LLM: Generating final text response.")
             final_response_content = response_message.content
             if final_response_content is None:
-                 print("Warning: LLM returned None content.")
                  final_response_content = "I seem unable to respond now. Please try again."
             break
 
     if final_response_content:
          return final_response_content
     elif loop_count >= MAX_TOOL_CALLS:
-         print("Error: Exceeded maximum tool calls.")
-         return "I seem tobe stuck processing that. Could you please rephrase?"
+         return "I seem to be stuck processing that. Could you please rephrase?"
     else:
-         print("Warning: Agent loop finished unexpectedly without final content.")
          return "Something unexpected happened. Please try again."
