@@ -76,7 +76,7 @@ def test_book_appointment(payload: TestBookingPayLoad):
         raise HTTPException(status_code=400, detail="Booking failed. Slot may be unavailable")
     
     
-    booking_details = db_utils.get_booking_details(new_appointment_id)
+    booking_details = db_utils.get_booking_details(new_appointment_id) #type:ignore
     return {"status" : "booked", "appointment id" : new_appointment_id, "details" : booking_details}
 
 @router.get("/booking/{appointment_id}", tags = ["_TEST_Database"])

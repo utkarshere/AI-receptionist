@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from .routes import test_db_routes, chat
+from .tests import test_db_routes
+from .routes import chat
 
 app = FastAPI(
     title='AI Receptionist Assistant API',
