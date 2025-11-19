@@ -458,7 +458,7 @@ def get_booking_details(appointment_id:int, ignore_status=False):
     finally:
         conn.close()
 
-from datetime import datetime, timedelta # Make sure timedelta is imported
+
 
 def find_next_available_slot(service_name: str, start_datetime_str: str):
     """
