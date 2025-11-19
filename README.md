@@ -94,11 +94,11 @@ pip install -r frontend/requirements.txt
 
 Create a `.env` file in the **root** directory (`Receptionist/.env`) and add your credentials:
 
-OPENAI_API_KEY="sk-proj-..."
+```plaintext
 EMAIL_ADDRESS="your-sender-email@gmail.com"
 EMAIL_PASSWORD="your-16-digit-app-password"
-
 **Note:** For Gmail, use an 'App Password' generated from your Google Account Security settings.
+```
 
 ### 5. Initialize the Database
 
@@ -133,4 +133,4 @@ Start the Streamlit user interface
 streamlit run frontend/app.py
 ```
 
-The app will open in your browser at `http://localhost:8501`.
+The app will open in your browser at `http://localhost:8501`
