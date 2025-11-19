@@ -95,6 +95,7 @@ pip install -r frontend/requirements.txt
 Create a `.env` file in the **root** directory (`Receptionist/.env`) and add your credentials:
 
 ```plaintext
+OPENAI_API_KEY="openai api key generated from openai platform"
 EMAIL_ADDRESS="your-sender-email@gmail.com"
 EMAIL_PASSWORD="your-16-digit-app-password"
 **Note:** For Gmail, use an 'App Password' generated from your Google Account Security settings.
